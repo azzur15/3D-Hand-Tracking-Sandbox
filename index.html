@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>3D Hand Tracking Sandbox - Pro</title>
+    <title>3D Hand Tracking Sandbox AI - Pro</title>
     <!-- Tailwind CSS untuk UI Modern -->
     <script src="https://cdn.tailwindcss.com"></script>
     
@@ -35,6 +35,329 @@
             }
         }
         @media screen and (orientation: landscape) {
+            #landscape-notice {
+                display: none;
+            }
+        }
+        /* Kustom Transisi UI */
+        .window-transition {
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+    </style>
+</head>
+<body class="relative w-screen h-screen overflow-hidden text-white">
+
+    <!-- Notifikasi Putar Layar (Khusus Mobile Portrait) -->
+    <div id="landscape-notice" class="hidden fixed inset-0 bg-slate-950 z-50 flex-col items-center justify-center p-6 text-center">
+        <div class="animate-bounce mb-4 text-indigo-400">
+            <svg class="w-16 h-16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2zM9 5h6"></path>
+            </svg>
+        </div>
+        <h2 class="text-xl font-bold mb-2">Mode Landscape Sangat Direkomendasikan</h2>
+        <p class="text-slate-400 text-sm max-w-xs">Putar perangkat Anda ke posisi tidur (Lanskap) untuk area bermain sandbox yang lebih maksimal.</p>
+        <button onclick="document.getElementById('landscape-notice').style.display='none'" class="mt-6 px-5 py-2 bg-indigo-600 rounded-lg text-sm font-semibold hover:bg-indigo-500">Tetap lanjut</button>
+    </div>
+
+    <!-- Background 3D Viewport -->
+    <canvas id="gameCanvas" class="absolute inset-0 z-0"></canvas>
+
+    <!-- Tombol Mengambang untuk membuka kembali Jendela Menu Sandbox jika di-minimize -->
+    <button id="btnOpenSandboxMenu" class="hidden absolute top-4 left-4 z-20 w-12 h-12 bg-slate-900/95 border border-indigo-500/50 rounded-2xl flex items-center justify-center text-xl shadow-lg hover:bg-indigo-950 active:scale-95 transition-all">
+        🛠️
+    </button>
+
+    <!-- JENDELA INTERAKTIF KIRI: Jendela Sandbox & Warna Objek -->
+    <div id="sandboxMenuWindow" class="window-transition absolute top-4 left-4 bottom-4 w-72 flex flex-col gap-3 z-10 pointer-events-none">
+        
+        <!-- Bagian 1: Header Brand (Tetap Statis) -->
+        <div class="bg-slate-900/95 backdrop-blur-md p-3.5 rounded-2xl border border-slate-800 pointer-events-auto shadow-2xl flex items-center justify-between">
+            <div>
+                <h1 class="text-sm font-extrabold tracking-wider text-indigo-400 flex items-center gap-1.5">
+                    <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                    AI HAND SANDBOX
+                </h1>
+                <p id="controlMethodText" class="text-[9px] text-slate-400 mt-0.5">Mode Sentuh Aktif</p>
+            </div>
+            <!-- Tombol perkecil seluruh menu -->
+            <button onclick="toggleSandboxWindow(true)" class="w-7 h-7 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white rounded-lg flex items-center justify-center text-xs transition active:scale-90">
+                ✕
+            </button>
+        </div>
+
+        <!-- Bagian 2: Isi Menu Sandbox (Bisa digulung) -->
+        <div class="bg-slate-900/95 backdrop-blur-md p-4 rounded-2xl border border-slate-800 pointer-events-auto shadow-2xl flex-1 flex flex-col justify-between overflow-y-auto">
+            <!-- Pilihan Spawn -->
+            <div>
+                <span class="text-[9px] font-bold text-slate-400 tracking-wider uppercase block mb-2">Pilih & Spawn Objek</span>
+                <div class="grid grid-cols-2 gap-2">
+                    <button onclick="spawnObject('cube', 0x3b82f6)" class="p-2.5 bg-slate-800/60 hover:bg-indigo-600/90 rounded-xl flex flex-col items-center justify-center gap-1 transition active:scale-95 border border-slate-700/30">
+                        <span class="text-lg">📦</span>
+                        <span class="text-[9px] font-medium">Kubus Biru</span>
+                    </button>
+                    <button onclick="spawnObject('cylinder', 0xa855f7)" class="p-2.5 bg-slate-800/60 hover:bg-indigo-600/90 rounded-xl flex flex-col items-center justify-center gap-1 transition active:scale-95 border border-slate-700/30">
+                        <span class="text-lg">🛢️</span>
+                        <span class="text-[9px] font-medium">Tabung Ungu</span>
+                    </button>
+                    <button onclick="spawnObject('sphere', 0xf97316)" class="p-2.5 bg-slate-800/60 hover:bg-indigo-600/90 rounded-xl flex flex-col items-center justify-center gap-1 transition active:scale-95 border border-slate-700/30">
+                        <span class="text-lg">🔴</span>
+                        <span class="text-[9px] font-medium">Bola Jingga</span>
+                    </button>
+                    <button onclick="spawnObject('torus', 0xec4899)" class="p-2.5 bg-slate-800/60 hover:bg-indigo-600/90 rounded-xl flex flex-col items-center justify-center gap-1 transition active:scale-95 border border-slate-700/30">
+                        <span class="text-lg">🍩</span>
+                        <span class="text-[9px] font-medium">Donat Merah</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Petunjuk Bermain (Scrollable) -->
+            <div class="my-3 p-2.5 bg-slate-950/80 rounded-xl border border-slate-800/60 text-[9px] text-slate-400 leading-relaxed">
+                <span class="font-bold text-slate-300 block mb-0.5">💡 Tips Gerakan:</span>
+                • Satukan jempol & telunjuk secara rapat.<br>
+                • Jendela kamera di kanan bawah menunjukkan status sensor.<br>
+                • Pastikan tangan terlihat utuh di depan kamera.
+            </div>
+
+            <!-- Kontrol Fisika Global -->
+            <div class="border-t border-slate-800 pt-3 flex flex-col gap-2">
+                <button id="btnGravity" class="w-full py-2 bg-indigo-950/80 hover:bg-indigo-900 border border-indigo-800/50 text-indigo-200 text-xs font-bold rounded-xl transition flex items-center justify-center gap-1.5">
+                    <span id="gravIcon">🌍</span> <span id="gravText">GRAVITASI AKTIF</span>
+                </button>
+                <button id="btnReset" class="w-full py-2 bg-rose-950/80 hover:bg-rose-900 border border-rose-800/50 text-rose-200 text-xs font-bold rounded-xl transition flex items-center justify-center gap-1.5">
+                    <span>🧹</span> BERSIHKAN SCENE
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- JENDELA INTERAKTIF KANAN BAWAH: Jendela Pratinjau Kamera (Picture-In-Picture) -->
+    <div id="cameraPreviewContainer" class="window-transition absolute bottom-4 right-4 z-10 flex flex-col gap-1.5">
+        
+        <!-- Header Jendela Kamera (Bisa dikecilkan) -->
+        <div class="bg-slate-900/95 border border-slate-800 px-3 py-1.5 rounded-xl flex items-center justify-between w-48 md:w-56">
+            <span id="aiStatusText" class="text-[10px] font-bold text-amber-400 flex items-center gap-1">
+                ⚠️ Kamera Siap
+            </span>
+            <button onclick="toggleCameraWindow()" class="text-[10px] bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white px-1.5 py-0.5 rounded transition">
+                🗕 Min
+            </button>
+        </div>
+
+        <!-- Tubuh Jendela Kamera (Video Feed + Canvas Overlay) -->
+        <div id="cameraWindowBody" class="window-transition bg-slate-900/95 border border-slate-800 p-1 rounded-2xl shadow-2xl relative overflow-hidden w-48 h-36 md:w-56 md:h-42">
+            <!-- Video Tersembunyi -->
+            <video id="webcam" class="hidden" autoplay playsinline muted></video>
+            
+            <!-- Canvas Overlay -->
+            <canvas id="cameraOverlay" class="w-full h-full object-cover rounded-xl scale-x-[-1] bg-slate-950"></canvas>
+            
+            <div class="absolute top-2.5 left-2.5 bg-slate-950/80 px-1.5 py-0.5 rounded text-[8px] font-bold tracking-wider text-indigo-400 border border-indigo-500/30">
+                LIVE SENSOR
+            </div>
+        </div>
+    </div>
+
+    <!-- Tombol Mengambang khusus untuk membuka kembali Preview Kamera yang di-minimize -->
+    <button id="btnOpenPreview" class="hidden absolute bottom-4 right-4 z-10 px-3 py-2 bg-slate-900/95 border border-indigo-500/40 rounded-xl text-[10px] font-bold text-indigo-300 shadow-lg hover:bg-indigo-950 transition active:scale-95">
+        📷 Buka Kamera Feed
+    </button>
+
+    <!-- Tombol Pinch / Genggam untuk Mode Sentuh -->
+    <div id="touchPinchContainer" class="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 flex flex-col items-center gap-1 pointer-events-none md:left-auto md:right-4 md:bottom-52 md:translate-x-0">
+        <button id="btnTouchPinch" class="pointer-events-auto w-16 h-16 bg-gradient-to-tr from-indigo-600 to-violet-500 rounded-full flex flex-col items-center justify-center text-white font-bold shadow-lg shadow-indigo-500/25 active:scale-90 transition-all border border-indigo-400/30">
+            <span id="touchPinchIcon" class="text-2xl">🖐️</span>
+            <span class="text-[8px] mt-0.5 tracking-wider uppercase">Pinch</span>
+        </button>
+    </div>
+
+    <!-- UI Overlay Tengah: Petunjuk Memulai / Perizinan Kamera -->
+    <div id="startupOverlay" class="fixed inset-0 bg-slate-950/95 z-40 flex items-center justify-center p-4 backdrop-blur-md overflow-y-auto">
+        <div class="bg-slate-900 border border-slate-800 max-w-md w-full p-6 rounded-3xl shadow-2xl my-auto">
+            <div class="w-16 h-16 bg-indigo-950 rounded-2xl flex items-center justify-center mx-auto mb-4 text-indigo-400 border border-indigo-500/20 text-3xl">
+                🤖
+            </div>
+            <h3 id="modalTitle" class="text-lg font-bold text-center text-indigo-300">3D Hand Sandbox</h3>
+            <p id="modalDesc" class="text-sm text-center text-slate-400 mt-2 leading-relaxed">
+                Pilih metode kontrol yang ingin Anda gunakan untuk memanipulasi objek di dalam game sandbox 3D ini.
+            </p>
+            
+            <!-- Area Log Debugging Real-time -->
+            <div class="my-4 p-3 bg-slate-950 rounded-xl border border-slate-800 text-left">
+                <span class="text-[10px] font-bold text-indigo-400 uppercase tracking-widest block mb-1">Status Sistem:</span>
+                <div id="debugConsole" class="font-mono text-[10px] text-emerald-400 space-y-1 max-h-24 overflow-y-auto">
+                    [System] Siap mendeteksi metode kontrol...
+                </div>
+            </div>
+
+            <div class="flex flex-col gap-2.5">
+                <!-- Tombol Utama: Coba Aktifkan Kamera & AI -->
+                <button id="btnAllowCamera" class="w-full py-3.5 bg-gradient-to-r from-indigo-600 to-violet-600 rounded-xl font-bold text-sm hover:from-indigo-500 hover:to-violet-500 transition active:scale-95 shadow-lg shadow-indigo-500/20 flex items-center justify-center gap-2">
+                    <span>📷</span> <span id="btnText">MULAI DENGAN KAMERA (AI)</span>
+                </button>
+
+                <!-- Tombol Fallback Instan: Main dengan Sentuhan -->
+                <button id="btnPlayTouch" class="w-full py-3 bg-slate-800 hover:bg-slate-700 rounded-xl font-semibold text-xs text-slate-300 transition active:scale-95 border border-slate-700/50">
+                    👉 MAIN TANPA KAMERA (KONTROL SENTUH)
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Script Game & Logika Deteksi AI -->
+    <script>
+        // --- LOGGER UTAMA UNTUK DEBUGGING ---
+        const debugConsole = document.getElementById('debugConsole');
+        function writeLog(message, isError = false) {
+            const span = document.createElement('div');
+            span.className = isError ? 'text-rose-400' : 'text-emerald-400';
+            span.innerText = `[${new Date().toLocaleTimeString()}] ${message}`;
+            debugConsole.appendChild(span);
+            debugConsole.scrollTop = debugConsole.scrollHeight;
+            console.log(message);
+        }
+
+        // --- SISTEM JENDELA POP-UP / FLOATING BISA DI-MINIMIZE ---
+        const sandboxMenuWindow = document.getElementById('sandboxMenuWindow');
+        const btnOpenSandboxMenu = document.getElementById('btnOpenSandboxMenu');
+        const cameraPreviewContainer = document.getElementById('cameraPreviewContainer');
+        const cameraWindowBody = document.getElementById('cameraWindowBody');
+        const btnOpenPreview = document.getElementById('btnOpenPreview');
+
+        function toggleSandboxWindow(hide) {
+            if (hide) {
+                sandboxMenuWindow.classList.add('scale-95', 'opacity-0', 'pointer-events-none');
+                setTimeout(() => {
+                    sandboxMenuWindow.classList.add('hidden');
+                    btnOpenSandboxMenu.classList.remove('hidden');
+                }, 300);
+            } else {
+                btnOpenSandboxMenu.classList.add('hidden');
+                sandboxMenuWindow.classList.remove('hidden');
+                setTimeout(() => {
+                    sandboxMenuWindow.classList.remove('scale-95', 'opacity-0', 'pointer-events-none');
+                }, 10);
+            }
+            playTone(400, 'sine', 0.1, 0.05);
+        }
+
+        btnOpenSandboxMenu.addEventListener('click', () => toggleSandboxWindow(false));
+
+        let isCameraMinimized = false;
+        function toggleCameraWindow() {
+            isCameraMinimized = !isCameraMinimized;
+            if (isCameraMinimized) {
+                cameraPreviewContainer.classList.add('scale-90', 'opacity-0', 'pointer-events-none');
+                setTimeout(() => {
+                    cameraPreviewContainer.classList.add('hidden');
+                    btnOpenPreview.classList.remove('hidden');
+                }, 300);
+            } else {
+                btnOpenPreview.classList.add('hidden');
+                cameraPreviewContainer.classList.remove('hidden');
+                setTimeout(() => {
+                    cameraPreviewContainer.classList.remove('scale-90', 'opacity-0', 'pointer-events-none');
+                }, 10);
+            }
+            playTone(450, 'sine', 0.1, 0.05);
+        }
+
+        btnOpenPreview.addEventListener('click', () => toggleCameraWindow());
+
+        // --- SETUP AUDIO SINTETIS ---
+        let audioCtx;
+        function initAudio() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+        }
+        
+        function playTone(freq, type, duration, volume = 0.1) {
+            try {
+                if (!audioCtx) return;
+                if (audioCtx.state === 'suspended') audioCtx.resume();
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = type;
+                osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+                gain.gain.setValueAtTime(volume, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + duration);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start();
+                osc.stop(audioCtx.currentTime + duration);
+            } catch (e) { /* Gagal bersuara aman */ }
+        }
+
+        const soundSpawn = () => playTone(580, 'triangle', 0.15, 0.1);
+        const soundGrab = () => playTone(350, 'sine', 0.1, 0.15);
+        const soundRelease = () => playTone(250, 'sine', 0.1, 0.1);
+        const soundCollide = (vol = 0.1) => playTone(100 + Math.random() * 100, 'sawtooth', 0.15, vol);
+
+        // --- SETUP SCENE THREE.JS ---
+        const canvas = document.getElementById('gameCanvas');
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x06060c);
+        scene.fog = new THREE.FogExp2(0x06060c, 0.03);
+
+        const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 100);
+        camera.position.set(0, 5, 12);
+        camera.lookAt(0, 1.5, 0);
+
+        const renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+        // Lighting
+        const ambientLight = new THREE.AmbientLight(0x1e293b, 1.2);
+        scene.add(ambientLight);
+
+        const dirLight = new THREE.DirectionalLight(0xffffff, 1.0);
+        dirLight.position.set(4, 15, 6);
+        dirLight.castShadow = true;
+        dirLight.shadow.mapSize.width = 1024;
+        dirLight.shadow.mapSize.height = 1024;
+        dirLight.shadow.bias = -0.0005;
+        scene.add(dirLight);
+
+        const stageLight1 = new THREE.PointLight(0x6366f1, 2.5, 20);
+        stageLight1.position.set(-6, 4, -4);
+        scene.add(stageLight1);
+
+        const stageLight2 = new THREE.PointLight(0xec4899, 2.0, 20);
+        stageLight2.position.set(6, 4, -4);
+        scene.add(stageLight2);
+
+        // Lantai Grid
+        const floorGeo = new THREE.BoxGeometry(24, 0.4, 16);
+        const floorMat = new THREE.MeshStandardMaterial({ color: 0x0a0f1d, roughness: 0.6, metalness: 0.3 });
+        const floor = new THREE.Mesh(floorGeo, floorMat);
+        floor.position.y = -0.2;
+        floor.receiveShadow = true;
+        scene.add(floor);
+
+        const gridHelper = new THREE.GridHelper(24, 24, 0x4f46e5, 0x1e293b);
+        gridHelper.position.y = 0.01;
+        scene.add(gridHelper);
+
+        // Batas sandbox dinding transparan
+        const walls = [];
+        const wallMat = new THREE.MeshBasicMaterial({ visible: false });
+        
+        const bW = new THREE.Mesh(new THREE.BoxGeometry(24, 24, 0.5), wallMat); bW.position.set(0, 12, -8); scene.add(bW); walls.push(bW);
+        const lW = new THREE.Mesh(new THREE.BoxGeometry(0.5, 24, 16), wallMat); lW.position.set(-12, 12, 0); scene.add(lW); walls.push(lW);
+        const rW = new THREE.Mesh(new THREE.BoxGeometry(0.5, 24, 16), wallMat); rW.position.set(12, 12, 0); scene.add(rW); walls.push(rW);
+        const fW = new THREE.Mesh(new THREE.BoxGeometry(24, 24, 0.5), wallMat); fW.position.set(0, 12, 8); scene.add(fW); walls.push(fW);
+
+
+        // --- SKELETON TANGAN 3D DENGAN INTERPOLASI GERAK HALUS ---
+        const activeHands = {};
+        const jointMaterial = new THREE.MeshBasicMaterial({ color: 0x10b981 });
+        const jointGeometry = new THREE.SphereGeometry(0.12, 8, 8);
+
+        function create3DHandRepresentation(customColor = 0x10b981) {
+            const handGrou        @media screen and (orientation: landscape) {
             #landscape-notice {
                 display: none;
             }
