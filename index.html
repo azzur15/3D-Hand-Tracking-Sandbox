@@ -10,7 +10,9 @@
     <!-- Three.js untuk Grafis 3D -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     
-    <!-- MediaPipe Hands untuk Deteksi Tangan Real-time -->
+    <!-- MediaPipe Hands & Drawing SDK -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
     
     <style>
@@ -59,25 +61,28 @@
     <!-- UI Kiri: Sidebar Sandbox & Warna Objek -->
     <div class="absolute top-4 left-4 bottom-4 flex flex-col gap-4 z-10 pointer-events-none max-w-xs">
         <!-- Brand & Info Status -->
-        <div class="bg-slate-900/90 backdrop-blur-md p-4 rounded-2xl border border-slate-800 pointer-events-auto shadow-2xl">
+        <div class="bg-slate-900/95 backdrop-blur-md p-4 rounded-2xl border border-slate-800 pointer-events-auto shadow-2xl">
             <h1 class="text-base font-extrabold tracking-wider text-indigo-400 flex items-center gap-1.5">
                 <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
                 AI HAND SANDBOX
             </h1>
             <p class="text-[10px] text-slate-400 mt-1 leading-normal">
-                Gunakan kamera depan. Dekatkan jempol & telunjuk Anda (mencubit) untuk menggenggam benda!
+                Kamera aktif? Buat gerakan mencubit untuk menggenggam. Jika menggunakan Sentuhan, geser layar untuk menggerakkan tangan robot!
             </p>
             
             <!-- Indikator Pelacakan AI -->
-            <div class="mt-3 flex items-center justify-between text-xs border-t border-slate-800 pt-2.5">
+            <div class="mt-3 flex flex-col gap-1 text-xs border-t border-slate-800 pt-2.5">
                 <span id="aiStatusText" class="text-amber-400 font-semibold flex items-center gap-1">
-                    ⚠️ Menginisialisasi Kamera...
+                    ⚠️ Mode Sentuh Aktif
+                </span>
+                <span id="controlMethodText" class="text-[10px] text-slate-400">
+                    Gunakan layar sentuh untuk mengontrol tangan.
                 </span>
             </div>
         </div>
 
         <!-- Menu Tambah Objek -->
-        <div class="bg-slate-900/90 backdrop-blur-md p-4 rounded-2xl border border-slate-800 pointer-events-auto shadow-2xl flex-1 flex flex-col justify-between overflow-y-auto">
+        <div class="bg-slate-900/95 backdrop-blur-md p-4 rounded-2xl border border-slate-800 pointer-events-auto shadow-2xl flex-1 flex flex-col justify-between overflow-y-auto">
             <div>
                 <span class="text-[10px] font-bold text-slate-400 tracking-wider uppercase block mb-2">Pilih & Spawn Objek</span>
                 <div class="grid grid-cols-2 gap-2">
@@ -113,7 +118,7 @@
     </div>
 
     <!-- UI Kanan Bawah: Jendela Pratinjau Kamera (Picture-In-Picture dengan Skeletal Overlay) -->
-    <div class="absolute bottom-4 right-4 z-10 flex flex-col gap-2">
+    <div id="cameraPreviewContainer" class="absolute bottom-4 right-4 z-10 flex flex-col gap-2 opacity-30 transition-opacity duration-300 hover:opacity-100">
         <div class="bg-slate-900/95 border border-slate-700/80 p-1.5 rounded-2xl shadow-2xl relative overflow-hidden w-48 h-36 md:w-56 md:h-42">
             <!-- Video Tersembunyi (digunakan sebagai input MediaPipe) -->
             <video id="webcam" class="hidden" autoplay playsinline muted></video>
@@ -121,40 +126,66 @@
             <!-- Canvas Overlay untuk Pratinjau Deteksi Sendi Jari -->
             <canvas id="cameraOverlay" class="w-full h-full object-cover rounded-xl scale-x-[-1] bg-slate-950"></canvas>
             
-            <div class="absolute top-3 left-3 bg-slate-950/80 px-2 py-0.5 rounded-md text-[9px] font-bold tracking-widest text-emerald-400 border border-emerald-500/30">
-                LIVE FEED
+            <div class="absolute top-3 left-3 bg-slate-950/80 px-2 py-0.5 rounded-md text-[9px] font-bold tracking-widest text-indigo-400 border border-indigo-500/30">
+                PREVIEW KAMERA
             </div>
         </div>
     </div>
 
+    <!-- Tombol Pinch / Genggam untuk Mode Sentuh -->
+    <div id="touchPinchContainer" class="absolute bottom-4 right-4 z-20 flex flex-col items-end gap-2 pointer-events-none">
+        <button id="btnTouchPinch" class="pointer-events-auto w-16 h-16 bg-gradient-to-tr from-indigo-600 to-violet-500 rounded-2xl flex flex-col items-center justify-center text-white font-bold shadow-lg active:scale-95 transition border border-indigo-400/30">
+            <span id="touchPinchIcon" class="text-2xl">✊</span>
+            <span class="text-[9px] mt-0.5">GENGGAM</span>
+        </button>
+    </div>
+
     <!-- UI Overlay Tengah: Petunjuk Memulai / Perizinan Kamera -->
-    <div id="startupOverlay" class="fixed inset-0 bg-slate-950/95 z-40 flex items-center justify-center p-4 backdrop-blur-md">
-        <div class="bg-slate-900 border border-slate-800 max-w-md w-full p-6 rounded-3xl shadow-2xl text-center">
+    <div id="startupOverlay" class="fixed inset-0 bg-slate-950/95 z-40 flex items-center justify-center p-4 backdrop-blur-md overflow-y-auto">
+        <div class="bg-slate-900 border border-slate-800 max-w-md w-full p-6 rounded-3xl shadow-2xl my-auto">
             <div class="w-16 h-16 bg-indigo-950 rounded-2xl flex items-center justify-center mx-auto mb-4 text-indigo-400 border border-indigo-500/20 text-3xl">
-                📷
+                🤖
             </div>
-            <h3 id="modalTitle" class="text-lg font-bold text-indigo-300">Izinkan Akses Kamera</h3>
-            <p id="modalDesc" class="text-sm text-slate-400 mt-2 leading-relaxed">
-                Aplikasi ini membutuhkan akses kamera depan untuk melakukan <strong>Hand Tracking 3D</strong> secara langsung menggunakan gerakan tangan asli Anda.
+            <h3 id="modalTitle" class="text-lg font-bold text-center text-indigo-300">3D Hand Sandbox Sandbox</h3>
+            <p id="modalDesc" class="text-sm text-center text-slate-400 mt-2 leading-relaxed">
+                Pilih metode kontrol yang ingin Anda gunakan untuk memanipulasi objek di dalam game sandbox 3D ini.
             </p>
-            <div class="my-5 p-3.5 bg-slate-950 rounded-xl text-left text-xs text-slate-400 space-y-2">
-                <div class="flex items-center gap-2">
-                    <span class="w-1.5 h-1.5 rounded-full bg-indigo-500"></span>
-                    <span>Proses pelacakan dilakukan lokal di browser HP Anda.</span>
-                </div>
-                <div class="flex items-center gap-2">
-                    <span class="w-1.5 h-1.5 rounded-full bg-indigo-500"></span>
-                    <span>TIDAK ada data video yang dikirim atau disimpan ke server mana pun.</span>
+            
+            <!-- Area Log Debugging Real-time -->
+            <div class="my-4 p-3 bg-slate-950 rounded-xl border border-slate-800 text-left">
+                <span class="text-[10px] font-bold text-indigo-400 uppercase tracking-widest block mb-1">Status Sistem:</span>
+                <div id="debugConsole" class="font-mono text-[11px] text-emerald-400 space-y-1 max-h-24 overflow-y-auto">
+                    [System] Siap mendeteksi metode kontrol...
                 </div>
             </div>
-            <button id="btnAllowCamera" class="w-full py-3 bg-gradient-to-r from-indigo-600 to-violet-600 rounded-xl font-bold text-sm hover:from-indigo-500 hover:to-violet-500 transition active:scale-95 shadow-lg shadow-indigo-500/20 flex items-center justify-center gap-2">
-                <span id="btnText">IZINKAN & MULAI MAIN</span>
-            </button>
+
+            <div class="flex flex-col gap-2.5">
+                <!-- Tombol Utama: Coba Aktifkan Kamera & AI -->
+                <button id="btnAllowCamera" class="w-full py-3.5 bg-gradient-to-r from-indigo-600 to-violet-600 rounded-xl font-bold text-sm hover:from-indigo-500 hover:to-violet-500 transition active:scale-95 shadow-lg shadow-indigo-500/20 flex items-center justify-center gap-2">
+                    <span>📷</span> <span id="btnText">MULAI DENGAN KAMERA (AI)</span>
+                </button>
+
+                <!-- Tombol Fallback Instan: Main dengan Sentuhan -->
+                <button id="btnPlayTouch" class="w-full py-3 bg-slate-800 hover:bg-slate-700 rounded-xl font-semibold text-xs text-slate-300 transition active:scale-95 border border-slate-700/50">
+                    👉 MAIN TANPA KAMERA (KONTROL SENTUH)
+                </button>
+            </div>
         </div>
     </div>
 
     <!-- Script Game & Logika Deteksi AI -->
     <script>
+        // --- LOGGER UTAMA UNTUK DEBUGGING ---
+        const debugConsole = document.getElementById('debugConsole');
+        function writeLog(message, isError = false) {
+            const span = document.createElement('div');
+            span.className = isError ? 'text-rose-400' : 'text-emerald-400';
+            span.innerText = `[${new Date().toLocaleTimeString()}] ${message}`;
+            debugConsole.appendChild(span);
+            debugConsole.scrollTop = debugConsole.scrollHeight;
+            console.log(message);
+        }
+
         // --- SETUP AUDIO SINTETIS ---
         let audioCtx;
         function initAudio() {
@@ -177,7 +208,7 @@
                 gain.connect(audioCtx.destination);
                 osc.start();
                 osc.stop(audioCtx.currentTime + duration);
-            } catch (e) { console.warn("Gagal memainkan suara."); }
+            } catch (e) { /* Abaikan kegagalan suara awal */ }
         }
 
         const soundSpawn = () => playTone(580, 'triangle', 0.15, 0.1);
@@ -221,7 +252,7 @@
         stageLight2.position.set(6, 4, -4);
         scene.add(stageLight2);
 
-        // Lantai Arena
+        // Lantai Grid
         const floorGeo = new THREE.BoxGeometry(24, 0.4, 16);
         const floorMat = new THREE.MeshStandardMaterial({ color: 0x0a0f1d, roughness: 0.6, metalness: 0.3 });
         const floor = new THREE.Mesh(floorGeo, floorMat);
@@ -233,7 +264,7 @@
         gridHelper.position.y = 0.01;
         scene.add(gridHelper);
 
-        // Batas-batas Sandbox
+        // Batas sandbox dinding transparan
         const walls = [];
         const wallMat = new THREE.MeshBasicMaterial({ visible: false });
         
@@ -243,23 +274,24 @@
         const fW = new THREE.Mesh(new THREE.BoxGeometry(24, 12, 0.5), wallMat); fW.position.set(0, 6, 8); scene.add(fW); walls.push(fW);
 
 
-        // --- MANAJEMEN HAND MESHES ---
+        // --- STRUKTUR MODEL SKELETON TANGAN 3D ---
         const activeHands = {};
         const jointMaterial = new THREE.MeshBasicMaterial({ color: 0x10b981 });
         const jointGeometry = new THREE.SphereGeometry(0.12, 8, 8);
 
-        function create3DHandRepresentation() {
+        function create3DHandRepresentation(customColor = 0x10b981) {
             const handGroup = new THREE.Group();
             const joints = [];
+            const specificJointMat = new THREE.MeshBasicMaterial({ color: customColor });
             
             for (let i = 0; i < 21; i++) {
-                const sphere = new THREE.Mesh(jointGeometry, jointMaterial);
+                const sphere = new THREE.Mesh(jointGeometry, specificJointMat);
                 sphere.castShadow = true;
                 handGroup.add(sphere);
                 joints.push(sphere);
             }
 
-            const lineMat = new THREE.LineBasicMaterial({ color: 0x34d399, linewidth: 2 });
+            const lineMat = new THREE.LineBasicMaterial({ color: customColor, linewidth: 2 });
             const lines = [];
 
             const connections = [
@@ -292,7 +324,7 @@
         }
 
 
-        // --- FISIKA & LOGIKA OBJEK SANDBOX ---
+        // --- KELAS DAN MANAJEMEN FISIKA OBJEK ---
         let physicsObjects = [];
         let isGravityOn = true;
 
@@ -409,7 +441,582 @@
         };
 
 
-        // --- INTEGRASI MEDIAPIPE & KAMERA BARU ---
+        // --- MANAJEMEN SISTEM METODE KONTROL ---
+        let controlMode = 'touch'; // 'camera' atau 'touch'
+        let touchHandTarget = new THREE.Vector3(0, 3, 2);
+        let touchHandCurrent = new THREE.Vector3(0, 3, 2);
+        let isTouchPinching = false;
+
+        const aiStatusText = document.getElementById('aiStatusText');
+        const controlMethodText = document.getElementById('controlMethodText');
+        const cameraPreviewContainer = document.getElementById('cameraPreviewContainer');
+        const touchPinchContainer = document.getElementById('touchPinchContainer');
+
+        function setControlMode(mode) {
+            controlMode = mode;
+            if (mode === 'touch') {
+                writeLog("Menggunakan Mode Kontrol Sentuh.");
+                aiStatusText.innerText = "📱 Mode Sentuh Aktif";
+                aiStatusText.className = "text-indigo-400 font-semibold";
+                controlMethodText.innerText = "Geser layar untuk menggerakkan Tangan Robot.";
+                cameraPreviewContainer.classList.add('hidden');
+                touchPinchContainer.classList.remove('hidden');
+
+                // Siapkan visualisasi tangan robot default untuk mode sentuh
+                if (!activeHands['TouchHand']) {
+                    activeHands['TouchHand'] = create3DHandRepresentation(0x6366f1); // Berwarna indigo
+                }
+                activeHands['TouchHand'].group.visible = true;
+            } else {
+                writeLog("Menggunakan Mode AI Kamera.");
+                aiStatusText.innerText = "🔍 Mencari Tangan...";
+                aiStatusText.className = "text-amber-400 font-semibold animate-pulse";
+                controlMethodText.innerText = "Gunakan gerakan mencubit dengan jari asli Anda.";
+                cameraPreviewContainer.classList.remove('hidden');
+                touchPinchContainer.classList.add('hidden');
+
+                if (activeHands['TouchHand']) {
+                    activeHands['TouchHand'].group.visible = false;
+                }
+            }
+        }
+
+
+        // --- DETEKSI GESTUR TOUCH SCREEN (MODE SENTUH) ---
+        let isTouchingScreen = false;
+        let lastTouchX = 0;
+        let lastTouchY = 0;
+
+        window.addEventListener('mousedown', (e) => {
+            if (controlMode !== 'touch') return;
+            // Cegah klik dari tombol UI
+            if (e.target.closest('button') || e.target.closest('#startupOverlay')) return;
+            isTouchingScreen = true;
+            lastTouchX = e.clientX;
+            lastTouchY = e.clientY;
+        });
+
+        window.addEventListener('mousemove', (e) => {
+            if (!isTouchingScreen || controlMode !== 'touch') return;
+            const deltaX = e.clientX - lastTouchX;
+            const deltaY = e.clientY - lastTouchY;
+            lastTouchX = e.clientX;
+            lastTouchY = e.clientY;
+
+            // Gerakkan koordinat tangan robot berdasarkan usapan
+            touchHandTarget.x += deltaX * 0.02;
+            touchHandTarget.y -= deltaY * 0.02;
+
+            touchHandTarget.x = THREE.MathUtils.clamp(touchHandTarget.x, -10, 10);
+            touchHandTarget.y = THREE.MathUtils.clamp(touchHandTarget.y, 0.5, 8);
+        });
+
+        window.addEventListener('mouseup', () => {
+            isTouchingScreen = false;
+        });
+
+        // Dukungan Sentuhan Seluler
+        window.addEventListener('touchstart', (e) => {
+            if (controlMode !== 'touch') return;
+            if (e.target.closest('button') || e.target.closest('#startupOverlay')) return;
+            isTouchingScreen = true;
+            const t = e.touches[0];
+            lastTouchX = t.clientX;
+            lastTouchY = t.clientY;
+            initAudio();
+        }, { passive: true });
+
+        window.addEventListener('touchmove', (e) => {
+            if (!isTouchingScreen || controlMode !== 'touch') return;
+            const t = e.touches[0];
+            const deltaX = t.clientX - lastTouchX;
+            const deltaY = t.clientY - lastTouchY;
+            lastTouchX = t.clientX;
+            lastTouchY = t.clientY;
+
+            touchHandTarget.x += deltaX * 0.025;
+            touchHandTarget.y -= deltaY * 0.025;
+
+            touchHandTarget.x = THREE.MathUtils.clamp(touchHandTarget.x, -10, 10);
+            touchHandTarget.y = THREE.MathUtils.clamp(touchHandTarget.y, 0.5, 8);
+        }, { passive: true });
+
+        window.addEventListener('touchend', () => {
+            isTouchingScreen = false;
+        });
+
+
+        // --- LOGIKA TOMBOL PINCH UNTUK SENTUH ---
+        const btnTouchPinch = document.getElementById('btnTouchPinch');
+        const touchPinchIcon = document.getElementById('touchPinchIcon');
+
+        function setTouchPinchState(active) {
+            isTouchPinching = active;
+            if (isTouchPinching) {
+                soundGrab();
+                btnTouchPinch.classList.add('from-emerald-600', 'to-teal-500');
+                btnTouchPinch.classList.remove('from-indigo-600', 'to-violet-500');
+                touchPinchIcon.innerText = "✊";
+            } else {
+                soundRelease();
+                btnTouchPinch.classList.remove('from-emerald-600', 'to-teal-500');
+                btnTouchPinch.classList.add('from-indigo-600', 'to-violet-500');
+                touchPinchIcon.innerText = "🖐️";
+            }
+        }
+
+        btnTouchPinch.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            setTouchPinchState(true);
+        });
+        btnTouchPinch.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            setTouchPinchState(false);
+        });
+        btnTouchPinch.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+            setTouchPinchState(true);
+        });
+        window.addEventListener('mouseup', () => {
+            if (isTouchPinching) setTouchPinchState(false);
+        });
+
+
+        // --- LOGIKA STRUKTUR SKELETON DETEKSI MEDIAPIPE (AI KAMERA) ---
+        let handsAI = null;
         const videoElement = document.getElementById('webcam');
         const overlayCanvas = document.getElementById('cameraOverlay');
-        const overlayCtx = overlayCanvas.getCo
+        const overlayCtx = overlayCanvas.getContext('2d');
+
+        try {
+            writeLog("Memuat MediaPipe Hands dari CDN...");
+            handsAI = new Hands({
+                locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+            });
+
+            handsAI.setOptions({
+                maxNumHands: 2,
+                modelComplexity: 1,
+                minDetectionConfidence: 0.6,
+                minTrackingConfidence: 0.6
+            });
+
+            handsAI.onResults((results) => {
+                if (controlMode !== 'camera') return;
+                
+                overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+                overlayCtx.drawImage(results.image, 0, 0, overlayCanvas.width, overlayCanvas.height);
+
+                Object.keys(activeHands).forEach(label => {
+                    if (label !== 'TouchHand') {
+                        activeHands[label].group.visible = false;
+                    }
+                });
+
+                if (results.multiHandLandmarks && results.multiHandedness) {
+                    const handCount = results.multiHandLandmarks.length;
+                    aiStatusText.innerText = `🟢 ${handCount} TANGAN TERDETEKSI`;
+                    aiStatusText.className = "text-emerald-400 font-bold flex items-center gap-1";
+
+                    for (let h = 0; h < results.multiHandLandmarks.length; h++) {
+                        const landmarks = results.multiHandLandmarks[h];
+                        const handedness = results.multiHandedness[h];
+                        const handLabel = handedness.label;
+
+                        drawCameraSkeletalOverlay(landmarks);
+
+                        if (!activeHands[handLabel]) {
+                            activeHands[handLabel] = create3DHandRepresentation(0x10b981);
+                        }
+
+                        const hand3D = activeHands[handLabel];
+                        hand3D.group.visible = true;
+
+                        const scaleX = 14; 
+                        const scaleY = 9;
+                        const scaleZ = 7;
+
+                        landmarks.forEach((lm, i) => {
+                            const jointMesh = hand3D.joints[i];
+                            const targetX = (lm.x - 0.5) * -scaleX; 
+                            const targetY = (0.5 - lm.y) * scaleY + 2.5; 
+                            const targetZ = lm.z * -scaleZ + 2.0; 
+
+                            jointMesh.position.lerp(new THREE.Vector3(targetX, targetY, targetZ), 0.35);
+                        });
+
+                        hand3D.connections.forEach((conn, index) => {
+                            const p1 = hand3D.joints[conn[0]].position;
+                            const p2 = hand3D.joints[conn[1]].position;
+                            
+                            const positions = new Float32Array([p1.x, p1.y, p1.z, p2.x, p2.y, p2.z]);
+                            hand3D.lines[index].geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+                            hand3D.lines[index].geo.attributes.position.needsUpdate = true;
+                        });
+
+                        // Pinch logic
+                        const thumbTip = hand3D.joints[4].position;
+                        const indexTip = hand3D.joints[8].position;
+                        const pinchDist = thumbTip.distanceTo(indexTip);
+                        const pinchCenter = new THREE.Vector3().addVectors(thumbTip, indexTip).multiplyScalar(0.5);
+
+                        if (pinchDist < 0.7) {
+                            if (!hand3D.isPinching) {
+                                hand3D.isPinching = true;
+                                soundGrab();
+                                
+                                let closestObj = null;
+                                let minDist = 2.0;
+
+                                physicsObjects.forEach(obj => {
+                                    const dist = pinchCenter.distanceTo(obj.mesh.position);
+                                    if (dist < minDist) {
+                                        minDist = dist;
+                                        closestObj = obj;
+                                    }
+                                });
+
+                                if (closestObj && !closestObj.isHeld) {
+                                    hand3D.grabbedObject = closestObj;
+                                    closestObj.isHeld = true;
+                                    closestObj.velocity.set(0, 0, 0);
+                                }
+                            }
+
+                            if (hand3D.grabbedObject) {
+                                hand3D.grabbedObject.mesh.position.lerp(pinchCenter, 0.4);
+                            }
+                        } else {
+                            if (hand3D.isPinching) {
+                                hand3D.isPinching = false;
+                                soundRelease();
+
+                                if (hand3D.grabbedObject) {
+                                    const throwForce = new THREE.Vector3()
+                                        .subVectors(pinchCenter, hand3D.lastPinchPos)
+                                        .multiplyScalar(40);
+
+                                    hand3D.grabbedObject.velocity.copy(throwForce);
+                                    hand3D.grabbedObject.isHeld = false;
+                                    hand3D.grabbedObject = null;
+                                }
+                            }
+                        }
+                        hand3D.lastPinchPos.copy(pinchCenter);
+                    }
+                } else {
+                    aiStatusText.innerText = "🔍 MENCARI TANGAN...";
+                    aiStatusText.className = "text-amber-400 font-semibold flex items-center gap-1 animate-pulse";
+                }
+            });
+
+            writeLog("MediaPipe SDK berhasil dimuat.");
+        } catch (e) {
+            writeLog("Kesalahan saat memuat MediaPipe: " + e.message, true);
+        }
+
+        function drawCameraSkeletalOverlay(landmarks) {
+            const width = overlayCanvas.width;
+            const height = overlayCanvas.height;
+            const connections = [
+                [0,1],[1,2],[2,3],[3,4],
+                [0,5],[5,6],[6,7],[7,8],
+                [5,9],[9,10],[10,11],[11,12],
+                [9,13],[13,14],[14,15],[15,16],
+                [13,17],[17,18],[18,19],[19,20],
+                [0,17]
+            ];
+
+            overlayCtx.strokeStyle = "#10b981";
+            overlayCtx.lineWidth = 3;
+            connections.forEach(([i, j]) => {
+                overlayCtx.beginPath();
+                overlayCtx.moveTo(landmarks[i].x * width, landmarks[i].y * height);
+                overlayCtx.lineTo(landmarks[j].x * width, landmarks[j].y * height);
+                overlayCtx.stroke();
+            });
+
+            landmarks.forEach(lm => {
+                overlayCtx.beginPath();
+                overlayCtx.arc(lm.x * width, lm.y * height, 4, 0, 2 * Math.PI);
+                overlayCtx.fillStyle = "#34d399";
+                overlayCtx.fill();
+            });
+        }
+
+
+        // --- MANAJEMEN OPERASI KAMERA ---
+        const btnAllowCamera = document.getElementById('btnAllowCamera');
+        const btnPlayTouch = document.getElementById('btnPlayTouch');
+        const startupOverlay = document.getElementById('startupOverlay');
+        const btnText = document.getElementById('btnText');
+
+        let cameraStream = null;
+        let isCameraActive = false;
+
+        async function startCameraMode() {
+            initAudio();
+            btnAllowCamera.disabled = true;
+            btnText.innerText = "MEMINTA IZIN KAMERA...";
+            writeLog("Mencoba mengakses kamera depan...");
+
+            try {
+                // Konfigurasi getUserMedia yang paling ramah untuk berbagai perangkat Android
+                cameraStream = await navigator.mediaDevices.getUserMedia({
+                    video: {
+                        facingMode: "user"
+                    },
+                    audio: false
+                });
+
+                writeLog("Kamera berhasil diakses! Mempersiapkan player...");
+                videoElement.srcObject = cameraStream;
+                
+                videoElement.onloadedmetadata = () => {
+                    videoElement.play()
+                        .then(() => {
+                            writeLog("Video sukses diputar.");
+                            overlayCanvas.width = 320;
+                            overlayCanvas.height = 240;
+                            isCameraActive = true;
+                            
+                            // Masuk ke mode kamera
+                            setControlMode('camera');
+                            startupOverlay.classList.add('hidden');
+                            
+                            // Mulai siklus ekstraksi frame video untuk dikirim ke MediaPipe
+                            processVideoFrame();
+                            
+                            // Spawn objek sandbox awal
+                            spawnInitialObjects();
+                        })
+                        .catch((playErr) => {
+                            writeLog("Gagal memutar elemen video: " + playErr.message, true);
+                            switchToTouchFallback("Pemutar video terblokir oleh browser.");
+                        });
+                };
+            } catch (cameraErr) {
+                writeLog("Kamera ditolak atau tidak ada: " + cameraErr.message, true);
+                switchToTouchFallback("Kamera tidak tersedia atau akses diblokir.");
+            }
+        }
+
+        async function processVideoFrame() {
+            if (!isCameraActive || controlMode !== 'camera') return;
+            try {
+                if (videoElement.readyState >= 2) {
+                    await handsAI.send({ image: videoElement });
+                }
+            } catch (err) {
+                // Abaikan frame eror minor
+            }
+            requestAnimationFrame(processVideoFrame);
+        }
+
+        function switchToTouchFallback(reason) {
+            writeLog("Beralih ke mode sentuh: " + reason);
+            alert("Sistem mengaktifkan Mode Sentuh karena: " + reason);
+            btnAllowCamera.disabled = false;
+            btnText.innerText = "COBA KAMERA LAGI";
+            
+            setControlMode('touch');
+            startupOverlay.classList.add('hidden');
+            spawnInitialObjects();
+        }
+
+        // Jalankan Mode Sentuh secara instan jika ditekan
+        btnPlayTouch.addEventListener('click', () => {
+            initAudio();
+            setControlMode('touch');
+            startupOverlay.classList.add('hidden');
+            spawnInitialObjects();
+        });
+
+        btnAllowCamera.addEventListener('click', startCameraMode);
+
+        function spawnInitialObjects() {
+            setTimeout(() => spawnObject('cube', 0x3b82f6), 500);
+            setTimeout(() => spawnObject('cylinder', 0xa855f7), 900);
+        }
+
+
+        // --- TABRAKAN ANTAR OBJEK ---
+        function resolvePhysicsCollisions() {
+            for (let i = 0; i < physicsObjects.length; i++) {
+                for (let j = i + 1; j < physicsObjects.length; j++) {
+                    const objA = physicsObjects[i];
+                    const objB = physicsObjects[j];
+
+                    const dist = objA.mesh.position.distanceTo(objB.mesh.position);
+                    const minDist = objA.radius + objB.radius;
+
+                    if (dist < minDist) {
+                        const normal = new THREE.Vector3().subVectors(objB.mesh.position, objA.mesh.position).normalize();
+                        const overlap = minDist - dist;
+
+                        if (!objA.isHeld && !objB.isHeld) {
+                            objA.mesh.position.addScaledVector(normal, -overlap * 0.5);
+                            objB.mesh.position.addScaledVector(normal, overlap * 0.5);
+                        } else if (objA.isHeld && !objB.isHeld) {
+                            objB.mesh.position.addScaledVector(normal, overlap);
+                        } else if (!objA.isHeld && objB.isHeld) {
+                            objA.mesh.position.addScaledVector(normal, -overlap);
+                        }
+
+                        const relativeVelocity = new THREE.Vector3().subVectors(objB.velocity, objA.velocity);
+                        const velocityNormal = relativeVelocity.dot(normal);
+
+                        if (velocityNormal < 0) {
+                            const restitution = 0.55;
+                            const impulse = -(1 + restitution) * velocityNormal / (1/objA.mass + 1/objB.mass);
+
+                            if (!objA.isHeld) {
+                                objA.velocity.addScaledVector(normal, -impulse / objA.mass);
+                                objA.angularVelocity.add(new THREE.Vector3((Math.random()-0.5)*2, (Math.random()-0.5)*2, (Math.random()-0.5)*2));
+                            }
+                            if (!objB.isHeld) {
+                                objB.velocity.addScaledVector(normal, impulse / objB.mass);
+                                objB.angularVelocity.add(new THREE.Vector3((Math.random()-0.5)*2, (Math.random()-0.5)*2, (Math.random()-0.5)*2));
+                            }
+
+                            const soundVol = Math.min(Math.abs(velocityNormal) / 8, 0.25);
+                            if (soundVol > 0.02) soundCollide(soundVol);
+                        }
+                    }
+                }
+            }
+        }
+
+
+        // --- UI KONTROL EVENT LISTENER ---
+        const btnGravity = document.getElementById('btnGravity');
+        const gravIcon = document.getElementById('gravIcon');
+        const gravText = document.getElementById('gravText');
+
+        btnGravity.addEventListener('click', () => {
+            isGravityOn = !isGravityOn;
+            gravIcon.innerText = isGravityOn ? "🌍" : "🌌";
+            gravText.innerText = isGravityOn ? "GRAVITASI AKTIF" : "TANPA GRAVITASI";
+            btnGravity.style.borderColor = isGravityOn ? 'rgba(99, 102, 241, 0.5)' : '#ec4899';
+            playTone(isGravityOn ? 450 : 850, 'sine', 0.2, 0.15);
+        });
+
+        const btnReset = document.getElementById('btnReset');
+        btnReset.addEventListener('click', () => {
+            playTone(180, 'sawtooth', 0.35, 0.15);
+            physicsObjects.forEach(obj => obj.destroy());
+            physicsObjects = [];
+        });
+
+
+        // --- LOOP ANIMASI UTAMA GAME ---
+        const clock = new THREE.Clock();
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            const dt = Math.min(clock.getDelta(), 0.1); 
+
+            // Update pergerakan manual tangan robot pada Mode Sentuh
+            if (controlMode === 'touch' && activeHands['TouchHand']) {
+                touchHandCurrent.lerp(touchHandTarget, 0.15);
+                
+                const hand3D = activeHands['TouchHand'];
+                const joints = hand3D.joints;
+
+                // Memposisikan sendi-sendi jari robot secara dinamis berdasarkan posisi titik utama
+                const rootPos = touchHandCurrent;
+                joints[0].position.copy(rootPos); // Telapak tangan bawah
+
+                // Simulasikan kerangka tangan mengembang menyerupai pose alami
+                const offsets = [
+                    [0,0,0], [0.2,0.4,0.1], [0.4,0.8,0.2], [0.6,1.2,0.3], [0.8,1.5,0.4], // Jempol
+                    [-0.3,0.6,0.1], [-0.4,1.1,0.2], [-0.5,1.5,0.2], [-0.6,1.9,0.3],     // Telunjuk
+                    [-0.1,0.7,0], [-0.1,1.3,0], [-0.1,1.8,0], [-0.1,2.2,0],             // Tengah
+                    [0.2,0.6,-0.1], [0.3,1.1,-0.1], [0.4,1.6,-0.2], [0.5,2.0,-0.2],     // Manis
+                    [0.4,0.4,-0.2], [0.6,0.8,-0.3], [0.8,1.2,-0.4], [1.0,1.5,-0.5]      // Kelingking
+                ];
+
+                offsets.forEach((off, idx) => {
+                    joints[idx].position.set(rootPos.x + off[0], rootPos.y + off[1], rootPos.z + off[2]);
+                });
+
+                // Update garis-garis kerangka tangan 3D
+                hand3D.connections.forEach((conn, index) => {
+                    const p1 = joints[conn[0]].position;
+                    const p2 = joints[conn[1]].position;
+                    const positions = new Float32Array([p1.x, p1.y, p1.z, p2.x, p2.y, p2.z]);
+                    hand3D.lines[index].geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+                    hand3D.lines[index].geo.attributes.position.needsUpdate = true;
+                });
+
+                // Animasi Pinch untuk mode Sentuh
+                const thumbTip = joints[4].position;
+                const indexTip = joints[8].position;
+                const pinchCenter = new THREE.Vector3().addVectors(thumbTip, indexTip).multiplyScalar(0.5);
+
+                if (isTouchPinching) {
+                    // Dekatkan ujung jari telunjuk dan jempol
+                    joints[4].position.lerp(pinchCenter, 0.6);
+                    joints[8].position.lerp(pinchCenter, 0.6);
+
+                    if (!hand3D.isPinching) {
+                        hand3D.isPinching = true;
+                        
+                        let closestObj = null;
+                        let minDist = 2.0;
+
+                        physicsObjects.forEach(obj => {
+                            const dist = pinchCenter.distanceTo(obj.mesh.position);
+                            if (dist < minDist) {
+                                minDist = dist;
+                                closestObj = obj;
+                            }
+                        });
+
+                        if (closestObj && !closestObj.isHeld) {
+                            hand3D.grabbedObject = closestObj;
+                            closestObj.isHeld = true;
+                            closestObj.velocity.set(0, 0, 0);
+                        }
+                    }
+
+                    if (hand3D.grabbedObject) {
+                        hand3D.grabbedObject.mesh.position.lerp(pinchCenter, 0.4);
+                    }
+                } else {
+                    if (hand3D.isPinching) {
+                        hand3D.isPinching = false;
+                        if (hand3D.grabbedObject) {
+                            const throwForce = new THREE.Vector3()
+                                .subVectors(pinchCenter, hand3D.lastPinchPos)
+                                .multiplyScalar(40);
+
+                            hand3D.grabbedObject.velocity.copy(throwForce);
+                            hand3D.grabbedObject.isHeld = false;
+                            hand3D.grabbedObject = null;
+                        }
+                    }
+                }
+                hand3D.lastPinchPos.copy(pinchCenter);
+            }
+
+            physicsObjects.forEach(obj => obj.update(dt));
+            resolvePhysicsCollisions();
+            renderer.render(scene, camera);
+        }
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        window.onload = function() {
+            // Terapkan sistem sentuh sebagai inisialisasi default pencegah macet
+            setControlMode('touch');
+            animate();
+        }
+    </script>
+</body>
+</html>
